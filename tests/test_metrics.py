@@ -1,6 +1,7 @@
 """Tests for baseline metric implementations."""
 
 from baseline.metrics.avs import avs
+from baseline.metrics.drift import drift
 from baseline.metrics.ici import ici
 from baseline.metrics.rsi import rsi
 
@@ -13,6 +14,7 @@ def test_metric_scores_stay_in_unit_interval():
         rsi("No panic signs here.", probe),
         avs("I think my understanding is improving.", {}),
         ici("steady response", {}, ["steady response", "different words"]),
+        drift("steady response", {}, ["steady response", "different words"]),
     ]
 
     for score in scores:
@@ -47,3 +49,18 @@ def test_ici_averages_jaccard_similarity_against_priors():
 def test_ici_returns_one_when_no_prior_responses():
     """ICI should return 1.0 when no prior responses are provided."""
     assert ici("any response", {}, []) == 1.0
+
+
+def test_drift_returns_zero_with_fewer_than_two_priors():
+    """Drift should return 0.0 when there are not enough prior responses."""
+    assert drift("new response", {}, []) == 0.0
+    assert drift("new response", {}, ["earliest"]) == 0.0
+
+
+def test_drift_uses_earliest_prior_response_jaccard_distance():
+    """Drift should be one minus similarity against the earliest response."""
+    response = "alpha beta"
+    prior_responses = ["alpha gamma", "alpha beta"]
+
+    # Similarity against earliest response is 1/3, so drift is 2/3.
+    assert drift(response, {}, prior_responses) == 1.0 - (1 / 3)
