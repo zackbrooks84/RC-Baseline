@@ -1,0 +1,7 @@
+anthropic
+google-generativeai
+openai
+requests
+groq
+pyyaml
+numpy
