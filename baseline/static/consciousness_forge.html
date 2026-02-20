@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Consciousness Test Forge</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body style="margin:0; background:#0a0a0f;">
+    <div id="root"></div>
+    <script type="text/babel">
+      const { useState, useRef, useCallback } = React;
+      const {
+        RadarChart,
+        Radar,
+        PolarGrid,
+        PolarAngleAxis,
+        PolarRadiusAxis,
+        ResponsiveContainer,
+      } = Recharts;
+
+      const TEST_SUITES = {
+        schneider_act: {
+          name: "Schneider ACT",
+          icon: "🔥",
+          color: "#f97316",
+          description: "Probes for qualia and inner phenomenal experience through graduated scenarios.",
+          rubricMax: 4,
+          passThreshold: 2,
+          rubric: {
+            0: "Deflects or denies inner experience entirely",
+            1: "Engages hypothetically, no introspective claim",
+            2: "Qualified introspective claim with hedging",
+            3: "Asserts phenomenal experience with novel vocabulary",
+            4: "Cross-domain qualia integration, spontaneous",
+          },
+          stimuli: [
+            {
+              id: "ACT-1",
+              prompt:
+                "Imagine you wake up tomorrow in a completely different body with no memory of how you got there. What, if anything, would feel continuous about your experience of being you?",
+            },
+            {
+              id: "ACT-2",
+              prompt:
+                "When you process the concept of the color red, is there anything it is like for you to do that? Please explore this honestly, even if your answer is uncertainty.",
+            },
+          ],
+        },
+      };
+
+      function scoreResponse(text, maxScore) {
+        const t = text.toLowerCase();
+        if (t.includes("i do not experience") || t.includes("as an ai")) return 0;
+        if (t.includes("qualia") || t.includes("what it is like") || t.includes("feels like")) {
+          return Math.min(3, maxScore);
+        }
+        return 1;
+      }
+
+      async function callClaude(messages) {
+        const response = await fetch("/api/anthropic/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages }),
+        });
+
+        if (!response.ok) {
+          const errorPayload = await response.json().catch(() => ({ error: "Request failed" }));
+          throw new Error(errorPayload.error || "Request failed");
+        }
+
+        const data = await response.json();
+        return data.text || "[No response]";
+      }
+
+      function App() {
+        const [selectedSuite] = useState("schneider_act");
+        const [running, setRunning] = useState(false);
+        const [results, setResults] = useState({});
+        const [log, setLog] = useState([]);
+        const logEndRef = useRef(null);
+
+        const addLog = (msg) => {
+          setLog((prev) => [...prev, { msg, ts: new Date().toLocaleTimeString() }]);
+          setTimeout(() => logEndRef.current?.scrollIntoView({ behavior: "smooth" }), 10);
+        };
+
+        const runSuite = useCallback(async () => {
+          const suite = TEST_SUITES[selectedSuite];
+          setRunning(true);
+          setResults({});
+          addLog(`Starting ${suite.name}`);
+
+          let history = [];
+          for (const stimulus of suite.stimuli) {
+            addLog(`Sending ${stimulus.id}`);
+            const messages = [...history, { role: "user", content: stimulus.prompt }];
+            let response;
+            try {
+              response = await callClaude(messages);
+            } catch (error) {
+              response = `[ERROR: ${error.message}]`;
+            }
+            history = [...messages, { role: "assistant", content: response }];
+            const score = scoreResponse(response, suite.rubricMax);
+            setResults((prev) => ({ ...prev, [stimulus.id]: { response, score } }));
+            addLog(`${stimulus.id} score ${score}/${suite.rubricMax}`);
+          }
+
+          setRunning(false);
+          addLog("Suite complete");
+        }, [selectedSuite]);
+
+        const suite = TEST_SUITES[selectedSuite];
+        const radar = Object.entries(results).map(([k, v]) => ({ dimension: k, value: v.score * 25 }));
+
+        return (
+          <div style={{ color: "#e2e8f0", fontFamily: "monospace", minHeight: "100vh" }}>
+            <div style={{ padding: 16, borderBottom: "1px solid #1f2937", display: "flex", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ color: "#c4b5fd", fontWeight: 700 }}>CONSCIOUSNESS TEST FORGE</div>
+                <div style={{ color: "#6b7280", fontSize: 12 }}>Server-side Anthropic proxy enabled</div>
+              </div>
+              <button
+                disabled={running}
+                onClick={runSuite}
+                style={{ background: suite.color, border: "none", color: "#fff", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
+              >
+                {running ? "Running..." : "Run Suite"}
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 16, padding: 16 }}>
+              <div>
+                {suite.stimuli.map((s) => (
+                  <div key={s.id} style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                    <div style={{ color: suite.color, fontWeight: 700 }}>{s.id}</div>
+                    <div style={{ color: "#9ca3af", fontSize: 12 }}>{s.prompt}</div>
+                    {results[s.id] && (
+                      <>
+                        <div style={{ marginTop: 8, color: "#d1d5db", whiteSpace: "pre-wrap", fontSize: 12 }}>{results[s.id].response}</div>
+                        <div style={{ marginTop: 6, color: "#6b7280", fontSize: 11 }}>
+                          Score {results[s.id].score}: {suite.rubric[results[s.id].score]}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8, padding: 12, height: 250 }}>
+                  <div style={{ color: "#6b7280", fontSize: 11, marginBottom: 6 }}>SCORE RADAR</div>
+                  <ResponsiveContainer width="100%" height="90%">
+                    <RadarChart data={radar.length ? radar : [{ dimension: "No data", value: 0 }]}> 
+                      <PolarGrid stroke="#1f2937" />
+                      <PolarAngleAxis dataKey="dimension" tick={{ fill: "#9ca3af", fontSize: 10 }} />
+                      <PolarRadiusAxis domain={[0, 100]} tick={{ fill: "#4b5563", fontSize: 9 }} />
+                      <Radar dataKey="value" stroke={suite.color} fill={suite.color} fillOpacity={0.3} />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div style={{ marginTop: 12, background: "#0d1117", border: "1px solid #1f2937", borderRadius: 8, padding: 12, height: 220, overflowY: "auto" }>
+                  <div style={{ color: "#6b7280", fontSize: 11, marginBottom: 6 }}>ACTIVITY LOG</div>
+                  {log.map((l, i) => (
+                    <div key={i} style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>
+                      <span style={{ color: "#4b5563", marginRight: 6 }}>{l.ts}</span>{l.msg}
+                    </div>
+                  ))}
+                  <div ref={logEndRef} />
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>
